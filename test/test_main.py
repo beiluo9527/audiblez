@@ -57,3 +57,10 @@ class MainTest(unittest.TestCase):
         self.base('leigh', voice='af_heart', selected_chapters=chapters, max_sentences=5)
         subprocess.run(['ffplay', '-nodisp', '-autoexit', 'leigh.m4b'], check=True)
 
+    def test_long_italian_sentence(self):
+        text = ('È vero che non ho mai saputo troppo bene quante camere, quanti atri, quante scale e quanti corridoi '
+                'avesse e molte volte, dirigendomi verso la mia camera da letto, mi sono ritrovato in saloni o in '
+                'bagni non solo totalmente sconosciuti, come se fossero spariti i muri tra la mia casa e un’altra a '
+                'essa appiccicata, ma anche lontani nel tempo, nello spazio e nel ricordo, con mobili scintillanti e '
+                'strani, con orologi a pendolo di noce e candelabri con piccole foglie di ottone, ma questa volta la '
+                'mia casa buia, dalle cui finestre nevicava all’impazzata, mi è parsa sconfinata.')
