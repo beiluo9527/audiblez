@@ -189,19 +189,48 @@ def print_selected_chapters(document_chapters, chapters):
         for i, c in enumerate(document_chapters, start=1)
     ], headers=['#', 'Chapter', 'Text Length', 'Selected', 'First words']))
 
+def split_long_sentence(text, max_length=400):
+    """Split a long sentence around the 500 chars, picking the first whitespace after the 500th character. """
+    if len(text) <= max_length:
+        return [text]
+    parts = []
+    while len(text) > max_length:
+        split_index = text.rfind(' ', 0, max_length)
+        if split_index == -1:
+            split_index = max_length
+        parts.append(text[:split_index].strip())
+        text = text[split_index:].strip()
+    if text:
+        parts.append(text)
+    return parts
+
 
 def gen_audio_segments(pipeline, text, voice, speed, stats=None, max_sentences=None, post_event=None):
     nlp = spacy.load('xx_ent_wiki_sm')
     nlp.add_pipe('sentencizer')
     audio_segments = []
     doc = nlp(text)
-    sentences = list(doc.sents)
-    for i, sent in enumerate(sentences):
+    lang_code = voice[0]
+
+    if lang_code in 'ab':
+        sentences = [s.text for s in doc.sents]
+    else:
+        # For non-english languages, Kokoro truncates long sentences, so we split them manually
+        sentences = []
+        for sent in list(doc.sents):
+            if len(sent.text) > 400:
+                print(f'Warning: Sentence too long ({len(sent.text)} chars), splitting into smaller sentences.')
+                sents = split_long_sentence(sent.text, 400)
+                sentences.extend(sents)
+            else:
+                sentences.append(sent.text)
+
+    for i, sent_text in enumerate(sentences):
         if max_sentences and i > max_sentences: break
-        for gs, ps, audio in pipeline(sent.text, voice=voice, speed=speed, split_pattern=r'\n\n\n'):
+        for gs, ps, audio in pipeline(sent_text, voice=voice, speed=speed, split_pattern=r'\n\n\n'):
             audio_segments.append(audio)
         if stats:
-            stats.processed_chars += len(sent.text)
+            stats.processed_chars += len(sent_text)
             stats.progress = stats.processed_chars * 100 // stats.total_chars
             stats.eta = strfdelta((stats.total_chars - stats.processed_chars) / stats.chars_per_sec)
             if post_event: post_event('CORE_PROGRESS', stats=stats)
@@ -212,7 +241,7 @@ def gen_audio_segments(pipeline, text, voice, speed, stats=None, max_sentences=N
 
 def gen_text(text, voice='af_heart', output_file='text.wav', speed=1, play=False):
     lang_code = voice[:1]
-    pipeline = KPipeline(lang_code=lang_code)
+    pipeline = KPipeline(lang_code=lang_code, repo_id='hexgrad/Kokoro-82M')
     load_spacy()
     audio_segments = gen_audio_segments(pipeline, text, voice=voice, speed=speed);
     final_audio = np.concatenate(audio_segments)
@@ -298,7 +327,12 @@ def concat_wavs_with_ffmpeg(chapter_files, output_folder, filename):
         for wav_file in chapter_files:
             f.write(f"file '{wav_file}'\n")
     concat_file_path = Path(output_folder) / filename.replace('.epub', '.tmp.mp4')
-    subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', wav_list_txt, '-c', 'copy', concat_file_path])
+    subprocess.run([
+        'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', wav_list_txt,
+        # '-c', 'copy',
+        '-c:a',  'libfdk_aac',
+        '-b:a',  '192k',
+        concat_file_path])
     Path(wav_list_txt).unlink()
     return concat_file_path
 
